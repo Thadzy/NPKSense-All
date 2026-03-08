@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NPKSense: God-Tier Calibrator</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <style>
+    /* --- CSS Styles --- */
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 380px 1fr; gap: 20px; }
+    @media(max-width: 900px) { .container { grid-template-columns: 1fr; } }
+    
+    .panel { background: #fff; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+    h1 { font-size: 24px; margin: 0 0 20px; color: #2c3e50; font-weight: 800; }
+    
+    .control-box { background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #e9ecef; }
+    label { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 12px; font-size: 14px; color: #2d3436; }
+    
+    input[type="file"] { width: 100%; }
+    input[type="number"] { width: 100%; padding: 8px 12px; border: 1px solid #dfe6e9; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+
+    /* Target Inputs Grid */
+    .target-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .target-wrapper { text-align: center; }
+    .target-wrapper span { font-size: 11px; font-weight: 600; color: #636e72; display: block; margin-bottom: 4px; }
+    .target-input { text-align: center; font-weight: bold; color: #0984e3; }
+
+    /* Slider */
+    .slider-container { position: relative; margin-top: 15px; }
+    input[type="range"] { width: 100%; cursor: pointer; height: 6px; border-radius: 5px; background: #dfe6e9; outline: none; -webkit-appearance: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #0984e3; cursor: pointer; border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+    .hist-wrapper { height: 100px; margin-bottom: 5px; position: relative; }
+    
+    .btn-auto { background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white; border: none; padding: 6px 14px; border-radius: 20px; font-size: 12px; cursor: pointer; font-weight: bold; }
+    .btn-toggle-view { position: absolute; top: 15px; right: 15px; z-index: 10; background: rgba(0, 0, 0, 0.65); color: white; border: 1px solid rgba(255, 255, 255, 0.3); padding: 8px 16px; border-radius: 30px; cursor: pointer; font-size: 13px; font-weight: 600; backdrop-filter: blur(4px); display: none; }
+    
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 25px; }
+    .stat-card { background: #fff; padding: 15px; border-radius: 12px; border: 1px solid #f1f2f6; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+    
+    .stat-header { font-size: 13px; color: #636e72; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; }
+    .stat-val { font-size: 24px; font-weight: 800; color: #2d3436; margin-bottom: 4px; }
+    .stat-detail { font-size: 13px; color: #636e72; display: flex; justify-content: space-between; padding: 4px 10px; background: #f8f9fa; border-radius: 6px; margin-top: 8px; }
+    .error-badge { font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    .err-good { color: #00b894; background: rgba(0, 184, 148, 0.1); }
+    .err-bad { color: #d63031; background: rgba(214, 48, 49, 0.1); }
+    
+    .c-N { border-top: 4px solid #b2bec3; }
+    .c-F { border-top: 4px solid #f1c40f; }
+    .c-P { border-top: 4px solid #00b894; }
+    .c-K { border-top: 4px solid #d63031; }
+
+    .img-box { position: relative; border-radius: 16px; overflow: hidden; background: #000; min-height: 500px; display: flex; align-items: center; justify-content: center; }
+    img { max-width: 100%; max-height: 600px; display: block; }
+    .loading { position: absolute; background: rgba(255, 255, 255, 0.95); padding: 12px 24px; border-radius: 30px; font-weight: bold; display: none; z-index: 20; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  
+  <div class="panel">
+    <h1>🎛️ NPKSense Tuner</h1>
+    
+    <div class="control-box">
+      <label>1. Upload Image</label>
+      <input type="file" id="uploadInput" accept="image/*">
+    </div>
+
+    <div class="control-box">
+      <label>
+        <span>2. Sensitivity</span>
+        <button class="btn-auto" id="btnAuto">🪄 Auto</button>
+      </label>
+      <div class="hist-wrapper"><canvas id="histChart"></canvas></div>
+      <div class="slider-container">
+        <input type="range" id="thresholdSlider" min="0" max="255" value="35" disabled>
+      </div>
+    </div>
+
+    <div class="control-box">
+      <label>3. Total Weight (g)</label>
+      <input type="number" id="realWeight" value="100" min="0" step="0.1">
+    </div>
+
+    <div class="control-box">
+      <label>4. Target Formula (%)</label>
+      <div class="target-grid">
+        <div class="target-wrapper"><span>N</span><input type="number" id="targetN" class="target-input" value="15"></div>
+        <div class="target-wrapper"><span>P</span><input type="number" id="targetP" class="target-input" value="15"></div>
+        <div class="target-wrapper"><span>K</span><input type="number" id="targetK" class="target-input" value="15"></div>
+        <div class="target-wrapper"><span>Filler</span><input type="number" id="targetF" class="target-input" value="55"></div>
+      </div>
+    </div>
+
+    <div style="height:200px; position:relative;">
+      <canvas id="pieChart"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="img-box">
+      <div class="loading" id="loading">Processing...</div>
+      <button id="btnToggleView" class="btn-toggle-view">👁️ Hold Original</button>
+      <img id="previewImg" src="https://via.placeholder.com/800x600?text=Upload+Image" alt="Preview">
+    </div>
+    
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card c-N"><div class="stat-header">N (Urea)</div><div class="stat-val">-</div></div>
+      <div class="stat-card c-F"><div class="stat-header">Filler</div><div class="stat-val">-</div></div>
+      <div class="stat-card c-P"><div class="stat-header">P (DAP)</div><div class="stat-val">-</div></div>
+      <div class="stat-card c-K"><div class="stat-header">K (Potash)</div><div class="stat-val">-</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_URL = "http://127.0.0.1:8000/analyze_interactive"; 
+  // ⚠️ อย่าลืมแก้ IP เป็นของเครื่อง Server (3050Ti) นะครับ เช่น 192.168.1.xxx
+
+  let currentFile = null;
+  let debounceTimer;
+  let recommendedThreshold = 35;
+  let originalImageB64 = null;  
+  let processedImageB64 = null; 
+  
+  const els = {
+    upload: document.getElementById('uploadInput'),
+    slider: document.getElementById('thresholdSlider'),
+    btnAuto: document.getElementById('btnAuto'),
+    weight: document.getElementById('realWeight'),
+    targets: {
+      N: document.getElementById('targetN'),
+      P: document.getElementById('targetP'),
+      K: document.getElementById('targetK'),
+      Filler: document.getElementById('targetF')
+    },
+    img: document.getElementById('previewImg'),
+    loading: document.getElementById('loading'),
+    btnToggle: document.getElementById('btnToggleView')
+  };
+
+  // Charts
+  const histCtx = document.getElementById('histChart').getContext('2d');
+  const histChart = new Chart(histCtx, {
+    type: 'bar',
+    data: {
+      labels: Array.from({length: 256}, (_, i) => i),
+      datasets: [{ label: 'Sat', data: [], backgroundColor: '#b2bec3' }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: false }, scales: { x: {display:false}, y: {display:false} } }
+  });
+
+  const pieCtx = document.getElementById('pieChart').getContext('2d');
+  const pieChart = new Chart(pieCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['N', 'Filler', 'P', 'K'],
+      datasets: [{ data: [1,1,1,1], backgroundColor: ['#b2bec3', '#f1c40f', '#00b894', '#d63031'], borderWidth: 2 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+  });
+
+  // Core Function
+  async function analyze(isFirstLoad = false) {
+    if(!currentFile) return;
+    els.loading.style.display = 'block';
+    
+    if (isFirstLoad) {
+        const reader = new FileReader();
+        reader.onload = (e) => { 
+            originalImageB64 = e.target.result; 
+            els.btnToggle.style.display = 'flex'; 
+        };
+        reader.readAsDataURL(currentFile);
+    }
+
+    const fd = new FormData();
+    fd.append('file', currentFile);
+    fd.append('threshold', els.slider.value);
+
+    try {
+      const res = await fetch(API_URL, { method: 'POST', body: fd });
+      if (!res.ok) throw new Error("Server Error");
+      const data = await res.json();
+      
+      processedImageB64 = `data:image/jpeg;base64,${data.image_b64}`;
+      if (!isHoldingToggle) els.img.src = processedImageB64;
+
+      if (isFirstLoad && data.histogram) {
+        histChart.data.datasets[0].data = data.histogram;
+        recommendedThreshold = data.auto_threshold;
+        els.slider.value = recommendedThreshold;
+      }
+      
+      // Update Histogram Colors
+      const thresh = parseInt(els.slider.value);
+      histChart.data.datasets[0].backgroundColor = histChart.data.labels.map(x => x <= thresh ? '#b2bec3' : '#f1c40f');
+      histChart.update();
+
+      // Calc Weights
+      const rawMass = { N: data.areas.N, P: data.areas.P, K: data.areas.K, Filler: data.areas.Filler };
+      const totalRaw = Object.values(rawMass).reduce((a,b)=>a+b, 0);
+      const userTotalWeight = parseFloat(els.weight.value) || 100;
+      const factor = totalRaw > 0 ? (userTotalWeight / totalRaw) : 0;
+      
+      const finalW = {
+        N: rawMass.N * factor,
+        P: rawMass.P * factor,
+        K: rawMass.K * factor,
+        Filler: rawMass.Filler * factor
+      };
+
+      // Get Targets
+      const targets = {
+        N: parseFloat(els.targets.N.value) || 0,
+        P: parseFloat(els.targets.P.value) || 0,
+        K: parseFloat(els.targets.K.value) || 0,
+        Filler: parseFloat(els.targets.Filler.value) || 0
+      };
+
+      // Render Stats with Error %
+      const renderStat = (val, target, selector) => {
+          const pct = userTotalWeight > 0 ? (val / userTotalWeight * 100) : 0;
+          const diff = pct - target;
+          const diffStr = diff > 0 ? `+${diff.toFixed(1)}%` : `${diff.toFixed(1)}%`;
+          const cls = Math.abs(diff) <= 2.0 ? 'err-good' : 'err-bad'; // Green if error < 2%
+          
+          document.querySelector(selector).innerHTML = `
+            <div class="stat-header">${selector.replace('.c-', '').replace('F', 'Filler')}</div>
+            <div class="stat-val">${val.toFixed(2)}g</div>
+            <div class="stat-detail">
+               <span>Meas: <b>${pct.toFixed(1)}%</b></span>
+               <span>Tgt: ${target}%</span>
+            </div>
+            <div class="stat-detail" style="justify-content:center; margin-top:4px;">
+               <span class="error-badge ${cls}">Err: ${diffStr}</span>
+            </div>
+          `;
+      };
+
+      renderStat(finalW.N, targets.N, '.c-N');
+      renderStat(finalW.Filler, targets.Filler, '.c-F');
+      renderStat(finalW.P, targets.P, '.c-P');
+      renderStat(finalW.K, targets.K, '.c-K');
+
+      pieChart.data.datasets[0].data = [finalW.N, finalW.Filler, finalW.P, finalW.K];
+      pieChart.update();
+
+    } catch(e) { console.error(e); } 
+    finally { els.loading.style.display = 'none'; }
+  }
+
+  // Events
+  els.upload.onchange = (e) => { currentFile = e.target.files[0]; els.slider.disabled = false; analyze(true); };
+  els.slider.oninput = () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => analyze(false), 200); };
+  els.btnAuto.onclick = () => { els.slider.value = recommendedThreshold; analyze(false); };
+  els.weight.onchange = () => analyze(false);
+  
+  // Recalculate when targets change
+  Object.values(els.targets).forEach(inp => inp.onchange = () => analyze(false));
+
+  // Toggle View
+  let isHoldingToggle = false;
+  const showOriginal = (e) => { if(e.cancelable) e.preventDefault(); if(originalImageB64) { els.img.src = originalImageB64; isHoldingToggle = true; } };
+  const showProcessed = () => { if(processedImageB64) { els.img.src = processedImageB64; isHoldingToggle = false; } };
+  
+  els.btnToggle.onmousedown = showOriginal;
+  els.btnToggle.onmouseup = els.btnToggle.onmouseleave = showProcessed;
+  els.btnToggle.ontouchstart = showOriginal;
+  els.btnToggle.ontouchend = showProcessed;
+
+</script>
+</body>
+</html>

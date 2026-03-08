@@ -1,0 +1,26 @@
+# Mac system files
+.DS_Store
+
+# Environments
+.env
+.env.local
+.venv/
+venv/
+env/
+__pycache__/
+
+# Node
+node_modules/
+.next/
+
+# Large Files & Dataset 
+# ห้ามเอาภาพ Dataset v1-v4 หรือโมเดล .pt ขึ้น Git เด็ดขาด เพราะหนักเกินโควต้า
+# ถ้าคนต่อไปอยากเทรนโมเดลใหม่ ให้แชร์ Dataset ผ่าน Google Drive เอาครับ
+*.pt
+*.pth
+NPKSense-Dataset/v1/
+NPKSense-Dataset/v2/
+NPKSense-Dataset/v3/
+NPKSense-Dataset/v4/
+NPKSense-Dataset/processed/
+NPKSense-Dataset/NPKSense
