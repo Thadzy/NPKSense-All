@@ -13,7 +13,10 @@ import PerspectiveCropper from "@/components/PerspectiveCropper";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
-const API_URL = "https://thadzy-npksense.hf.space/analyze_interactive";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://thadzy-npksense.hf.space";
+const API_URL = `${BASE_URL}/analyze_interactive`;
+const DETECT_CORNERS_URL = `${BASE_URL}/detect_corners`;
+const HEALTH_URL = `${BASE_URL}/health`;
 
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -31,6 +34,9 @@ function DashboardContent() {
 
   const [isCropping, setIsCropping] = useState(false);
   const [lastCropPoints, setLastCropPoints] = useState<{ x: number, y: number }[] | null>(null);
+  const [autoDetectedPoints, setAutoDetectedPoints] = useState<{ x: number, y: number }[] | null>(null);
+  const [autoDetected, setAutoDetected] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<'unknown' | 'warming' | 'ready' | 'error'>('unknown');
 
   const [threshold, setThreshold] = useState(35);
   const [totalWeight, setTotalWeight] = useState(100);
@@ -43,6 +49,30 @@ function DashboardContent() {
   const [autoThreshold, setAutoThreshold] = useState(35);
 
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Warmup: ping /health with retry — HF Space returns 503 while waking up
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async (attempts = 0) => {
+      if (cancelled) return;
+      setBackendStatus('warming');
+      try {
+        const r = await fetch(HEALTH_URL);
+        if (cancelled) return;
+        if (r.ok) { setBackendStatus('ready'); return; }
+        if (r.status === 503 && attempts < 20) {
+          setTimeout(() => poll(attempts + 1), 3000); // retry every 3s, up to 60s
+        } else {
+          setBackendStatus('error');
+        }
+      } catch {
+        if (!cancelled && attempts < 20) setTimeout(() => poll(attempts + 1), 3000);
+        else if (!cancelled) setBackendStatus('error');
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, []);
 
   // Load Params from URL
   useEffect(() => {
@@ -99,11 +129,26 @@ function DashboardContent() {
         if (ev.target?.result) {
           const imgUrl = ev.target.result as string;
           setOriginalImage(imgUrl);
-          setIsCropping(true);
           setProcessedImage(null);
           setCroppedRawImage(null);
           setCurrentDisplayImage(null);
           setLastCropPoints(null);
+          setAutoDetectedPoints(null);
+          setAutoDetected(false);
+
+          // ตรวจจับมุมอัตโนมัติก่อนแสดง Cropper
+          const formData = new FormData();
+          formData.append("file", selectedFile);
+          fetch(DETECT_CORNERS_URL, { method: "POST", body: formData })
+            .then(r => r.json())
+            .then(data => {
+              setAutoDetectedPoints(data.points);
+              setAutoDetected(data.detected === true);
+            })
+            .catch(() => {
+              // ถ้า detect ไม่ได้ ใช้ค่า default ของ Cropper แทน
+            })
+            .finally(() => setIsCropping(true));
         }
       };
       reader.readAsDataURL(selectedFile);
@@ -134,7 +179,17 @@ function DashboardContent() {
 
     try {
       const res = await fetch(API_URL, { method: "POST", body: formData });
-      if (!res.ok) throw new Error("API Error");
+      if (res.status === 503) {
+        // HF Space กำลัง wake up — แจ้งผู้ใช้และให้รอ
+        setBackendStatus('warming');
+        alert("The AI backend is waking up (cold start). Please wait ~30 seconds and try again.");
+        setLoading(false);
+        return;
+      }
+      if (!res.ok) {
+        const errText = await res.text().catch(() => res.statusText);
+        throw new Error(`Server error ${res.status}: ${errText}`);
+      }
       const data = await res.json();
 
       const procImg = `data:image/jpeg;base64,${data.image_b64}`;
@@ -144,15 +199,21 @@ function DashboardContent() {
       if (rawCrop) setCroppedRawImage(rawCrop);
       setCurrentDisplayImage(procImg);
       setMassScores(data.areas);
+      setBackendStatus('ready');
 
       if (isFirstLoad && data.histogram) {
         setHistData(data.histogram);
         setAutoThreshold(data.auto_threshold);
         setThreshold(data.auto_threshold);
+        // Auto-apply if backend suggests a different threshold — re-run silently
+        if (data.auto_threshold !== threshVal) {
+          analyzeImage(selectedFile, data.auto_threshold, false, pointsToSend);
+          return;
+        }
       }
     } catch (err) {
-      console.error(err);
-      alert("Backend connection failed.");
+      console.error("analyzeImage error:", err);
+      alert(`Analysis failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -206,6 +267,8 @@ function DashboardContent() {
           imageSrc={originalImage}
           onConfirm={handleCropConfirm}
           onCancel={() => { setIsCropping(false); setFile(null); }}
+          initialPoints={autoDetectedPoints ?? undefined}
+          autoDetected={autoDetected}
         />
       )}
 
@@ -225,12 +288,29 @@ function DashboardContent() {
             </span>
             AI-Powered Fertilizer Analysis 2.0
           </div>
+          {backendStatus === 'warming' && (
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium mb-2">
+              <span className="animate-spin inline-block w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full"></span>
+              AI backend waking up… (may take ~30s)
+            </div>
+          )}
+          {backendStatus === 'error' && (
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-50 border border-red-200 text-red-600 text-xs font-medium mb-2 cursor-pointer"
+              onClick={() => { setBackendStatus('warming'); fetch(HEALTH_URL).then(r => r.ok ? setBackendStatus('ready') : setBackendStatus('error')).catch(() => setBackendStatus('error')); }}>
+              ⚠ Backend unreachable — click to retry
+            </div>
+          )}
+          {backendStatus === 'ready' && (
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium mb-2">
+              ✓ Backend ready
+            </div>
+          )}
 
           <h1 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tight leading-tight">
             Precision Farming <br />
             Starts with <span className="text-blue-600">Perfect NPK.</span>
           </h1>
-
+ what
           <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
             <button onClick={scrollToAnalyzer} className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2 text-lg">
               <Microscope size={24} /> Start Analyzing

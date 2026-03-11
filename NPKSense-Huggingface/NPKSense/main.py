@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import base64
 import json
+import math
 
 # ==============================================================================
 # เซิร์ฟเวอร์ API หลักสำหรับรันบน Hugging Face Spaces (Production Backend)
@@ -59,6 +60,73 @@ def bgr_to_base64(img):
 # ✅ ฟังก์ชันดัดภาพ (Perspective Transform)
 # จำเป็นมากเพราะในการใช้งานจริง กล้องโทรศัพท์มักไม่ได้ระนาบขนาน 100% กับพื้น
 # ถ้ารูปเอียง เม็ดปุ๋ยระยะไกลจะดูเล็กกว่าระยะใกล้ ทำให้การคำนวณ Mass ผิดพลาด
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+# ✅ เรียงพิกัดมุม 4 จุดให้อยู่ในลำดับ TL, TR, BR, BL
+def order_points(pts):
+    rect = np.zeros((4, 2), dtype="float32")
+    s = pts.sum(axis=1)
+    rect[0] = pts[np.argmin(s)]   # Top-Left: ผลบวกน้อยสุด
+    rect[2] = pts[np.argmax(s)]   # Bottom-Right: ผลบวกมากสุด
+    diff = np.diff(pts, axis=1)
+    rect[1] = pts[np.argmin(diff)] # Top-Right: ผลต่างน้อยสุด
+    rect[3] = pts[np.argmax(diff)] # Bottom-Left: ผลต่างมากสุด
+    return rect
+
+# ✅ ตรวจหา 4 มุมกระดาษ/ถาดอัตโนมัติด้วย OpenCV
+@app.post("/detect_corners")
+async def detect_corners(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        h, w = img.shape[:2]
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blur, 50, 150)
+
+        kernel = np.ones((5, 5), np.uint8)
+        edges = cv2.dilate(edges, kernel, iterations=2)
+
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+        screen_cnt = None
+        for c in contours[:10]:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+            if len(approx) == 4:
+                area = cv2.contourArea(approx)
+                if area > (w * h * 0.05):  # ต้องใหญ่กว่า 5% ของรูป
+                    screen_cnt = approx
+                    break
+
+        if screen_cnt is not None:
+            pts = screen_cnt.reshape(4, 2).astype(float)
+            ordered = order_points(pts)
+            # ขยายมุมออกเล็กน้อย (2%) เพื่อให้ไม่ตัดขอบ
+            margin_x, margin_y = w * 0.01, h * 0.01
+            offsets = [(-margin_x, -margin_y), (margin_x, -margin_y), (margin_x, margin_y), (-margin_x, margin_y)]
+            points = [
+                {"x": float(max(0, min(1, (ordered[i][0] + offsets[i][0]) / w))),
+                 "y": float(max(0, min(1, (ordered[i][1] + offsets[i][1]) / h)))}
+                for i in range(4)
+            ]
+            return JSONResponse({"points": points, "detected": True})
+        else:
+            # Fallback: มุม 5% จากขอบรูป
+            return JSONResponse({"points": [
+                {"x": 0.05, "y": 0.05},
+                {"x": 0.95, "y": 0.05},
+                {"x": 0.95, "y": 0.95},
+                {"x": 0.05, "y": 0.95},
+            ], "detected": False})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
 def four_point_transform(image, pts):
     rect = np.array(pts, dtype="float32")
     (tl, tr, br, bl) = rect

@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import base64
 import json
+import math
 
 # ==============================================================================
 # เซิร์ฟเวอร์ API หลักสำหรับ Production (ใช้งานร่วมกับ Next.js Frontend)
@@ -53,6 +54,69 @@ MATERIAL_PROPS = {
 def bgr_to_base64(img):
     _, buffer = cv2.imencode('.jpg', img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
     return base64.b64encode(buffer).decode('utf-8')
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+def order_points(pts):
+    rect = np.zeros((4, 2), dtype="float32")
+    s = pts.sum(axis=1)
+    rect[0] = pts[np.argmin(s)]
+    rect[2] = pts[np.argmax(s)]
+    diff = np.diff(pts, axis=1)
+    rect[1] = pts[np.argmin(diff)]
+    rect[3] = pts[np.argmax(diff)]
+    return rect
+
+@app.post("/detect_corners")
+async def detect_corners(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        h, w = img.shape[:2]
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blur, 50, 150)
+
+        kernel = np.ones((5, 5), np.uint8)
+        edges = cv2.dilate(edges, kernel, iterations=2)
+
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+        screen_cnt = None
+        for c in contours[:10]:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+            if len(approx) == 4:
+                area = cv2.contourArea(approx)
+                if area > (w * h * 0.05):
+                    screen_cnt = approx
+                    break
+
+        if screen_cnt is not None:
+            pts = screen_cnt.reshape(4, 2).astype(float)
+            ordered = order_points(pts)
+            margin_x, margin_y = w * 0.01, h * 0.01
+            offsets = [(-margin_x, -margin_y), (margin_x, -margin_y), (margin_x, margin_y), (-margin_x, margin_y)]
+            points = [
+                {"x": float(max(0, min(1, (ordered[i][0] + offsets[i][0]) / w))),
+                 "y": float(max(0, min(1, (ordered[i][1] + offsets[i][1]) / h)))}
+                for i in range(4)
+            ]
+            return JSONResponse({"points": points, "detected": True})
+        else:
+            return JSONResponse({"points": [
+                {"x": 0.05, "y": 0.05},
+                {"x": 0.95, "y": 0.05},
+                {"x": 0.95, "y": 0.95},
+                {"x": 0.05, "y": 0.95},
+            ], "detected": False})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 # ✅ ฟังก์ชันดัดภาพ (Perspective Transform)
 # จำเป็นในการใช้งานบนมือถือ เพื่อแก้ปัญหาภาพเอียงและสัดส่วนเม็ดปุ๋ยคลาดเคลื่อน
