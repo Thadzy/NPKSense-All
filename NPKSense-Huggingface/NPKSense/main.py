@@ -164,6 +164,7 @@ async def analyze_interactive(
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         # ✅ Warp Image Process: กระบวนการดัดภาพตามกรอบที่ User ครอบเข้ามา
+        raw_cropped = None
         if points:
             try:
                 pts_norm = json.loads(points)
@@ -171,6 +172,7 @@ async def analyze_interactive(
                 # แปลงพิกัด Normalize (0-1) ให้เป็น Pixel (0-W/H)
                 pts_pixel = [[p['x'] * w, p['y'] * h] for p in pts_norm]
                 img = four_point_transform(img, pts_pixel)
+                raw_cropped = img.copy()  # เก็บภาพดัดแล้วก่อน YOLO วาดทับ (สำหรับ Hold-to-compare)
             except Exception as e:
                 print(f"Warp Error: {e}")
 
@@ -264,13 +266,19 @@ async def analyze_interactive(
             THRESH_FLOOR = 40
             auto_thresh = max(auto_thresh, THRESH_FLOOR)
 
-        return JSONResponse({
+        response = {
             "image_b64": bgr_to_base64(final_vis),
             # ส่งค่า Mass Score สุดท้ายของแต่ละ "ธาตุ" กลับไปแสดงบน Frontend
             "areas": mass_scores, 
             "histogram": hist_data,
-            "auto_threshold": auto_thresh
-        })
+            "auto_threshold": auto_thresh,
+            "used_threshold": auto_thresh,
+            "threshold_source": "auto",
+        }
+        # ส่งภาพ raw crop กลับเพื่อให้ frontend ใช้ฟีเจอร์ Hold-to-compare
+        if raw_cropped is not None:
+            response["raw_cropped_b64"] = bgr_to_base64(raw_cropped)
+        return JSONResponse(response)
 
     except Exception as e:
         print(f"Error: {e}")
