@@ -243,17 +243,29 @@ async def analyze_interactive(
         # สร้าง Histogram ความถี่ของสีเม็ด เพื่อช่วยหน้าเว็บกำหนดเส้น Threshold
         hist_data = [0]*256
         auto_thresh = 35
+        THRESH_FLOOR = 40
+
         if saturation_samples:
             for s in saturation_samples: hist_data[s]+=1
             samples_np = np.array(saturation_samples, dtype=np.uint8)
+
+            # Otsu thresholding
             ret, _ = cv2.threshold(samples_np, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-            auto_thresh = int(ret)
+            otsu_thresh = int(ret)
+
+            # Fallback: use 60th percentile for cases where all samples are same color (e.g., Urea)
+            p60_thresh = int(np.percentile(samples_np, 60))
+
+            # Take the highest value of the three to ensure better sample separation
+            auto_thresh = max(otsu_thresh, p60_thresh, THRESH_FLOOR)
 
         return JSONResponse({
             "image_b64": bgr_to_base64(final_vis),
             "areas": mass_scores,   # โยน Dictionary ส่วนผสมกลับไปให้ตีเป็น % ใน Frontend
             "histogram": hist_data, # สำหรับพล็อตกราฟให้ User เลือกขอบเขต
-            "auto_threshold": auto_thresh
+            "auto_threshold": auto_thresh,
+            "used_threshold": auto_thresh,
+            "threshold_source": "auto"
         })
 
     except Exception as e:

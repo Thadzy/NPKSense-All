@@ -205,11 +205,6 @@ function DashboardContent() {
         setHistData(data.histogram);
         setAutoThreshold(data.auto_threshold);
         setThreshold(data.auto_threshold);
-        // Auto-apply if backend suggests a different threshold — re-run silently
-        if (data.auto_threshold !== threshVal) {
-          analyzeImage(selectedFile, data.auto_threshold, false, pointsToSend);
-          return;
-        }
       }
     } catch (err) {
       console.error("analyzeImage error:", err);
@@ -310,7 +305,7 @@ function DashboardContent() {
             Precision Farming <br />
             Starts with <span className="text-blue-600">Perfect NPK.</span>
           </h1>
- what
+
           <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
             <button onClick={scrollToAnalyzer} className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2 text-lg">
               <Microscope size={24} /> Start Analyzing
