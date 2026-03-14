@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 # --- CONFIG ---
-MODEL_PATH = "npksense.pt"
+MODEL_PATH = "npksensev2.pt"
 try:
     model = YOLO(MODEL_PATH)
 except Exception as e:

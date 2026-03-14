@@ -8,15 +8,13 @@ interface PerspectiveCropperProps {
   imageSrc: string;
   onConfirm: (points: Point[]) => void;
   onCancel: () => void;
-  initialPoints?: Point[];
-  autoDetected?: boolean;
 }
 
-export default function PerspectiveCropper({ imageSrc, onConfirm, onCancel, initialPoints, autoDetected }: PerspectiveCropperProps) {
+export default function PerspectiveCropper({ imageSrc, onConfirm, onCancel }: PerspectiveCropperProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Points stored as image-normalized coords (0–1 relative to the actual image)
-  const [points, setPoints] = useState<Point[]>(initialPoints ?? [
+  const [points, setPoints] = useState<Point[]>([
     { x: 0.2, y: 0.2 },
     { x: 0.8, y: 0.2 },
     { x: 0.8, y: 0.8 },
@@ -87,11 +85,7 @@ export default function PerspectiveCropper({ imageSrc, onConfirm, onCancel, init
     <div className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-sm">
       <div className="mb-4 text-white text-center">
         <h2 className="text-2xl font-bold mb-1">Adjust Crop Area</h2>
-        {autoDetected ? (
-          <p className="text-emerald-400 text-sm font-semibold">✓ Auto-detected corners — drag to fine-tune if needed</p>
-        ) : (
-          <p className="text-slate-400 text-sm">Drag corners to match the container edges</p>
-        )}
+        <p className="text-slate-400 text-sm">Drag corners to match the container edges</p>
       </div>
 
       <div

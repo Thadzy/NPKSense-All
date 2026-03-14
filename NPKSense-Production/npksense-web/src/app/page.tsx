@@ -13,10 +13,9 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 
 // ─── API endpoints ────────────────────────────────────────────────────────────
 
-const BASE_URL          = process.env.NEXT_PUBLIC_API_URL || "https://thadzy-npksense.hf.space";
-const API_URL           = `${BASE_URL}/analyze_interactive`;
-const DETECT_CORNERS_URL = `${BASE_URL}/detect_corners`;
-const HEALTH_URL        = `${BASE_URL}/health`;
+const BASE_URL   = process.env.NEXT_PUBLIC_API_URL || "https://thadzy-npksense.hf.space";
+const API_URL    = `${BASE_URL}/analyze_interactive`;
+const HEALTH_URL = `${BASE_URL}/health`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,10 +36,8 @@ function DashboardContent() {
   const [currentDisplayImage, setCurrentDisplayImage] = useState<string | null>(null);
 
   // Perspective-crop state
-  const [isCropping,         setIsCropping]         = useState(false);
-  const [lastCropPoints,     setLastCropPoints]     = useState<Point[] | null>(null);
-  const [autoDetectedPoints, setAutoDetectedPoints] = useState<Point[] | null>(null);
-  const [autoDetected,       setAutoDetected]       = useState(false);
+  const [isCropping,     setIsCropping]     = useState(false);
+  const [lastCropPoints, setLastCropPoints] = useState<Point[] | null>(null);
 
   // Backend health
   const [backendStatus, setBackendStatus] = useState<BackendStatus>("unknown");
@@ -162,8 +159,6 @@ function DashboardContent() {
     setCroppedRawImage(null);
     setCurrentDisplayImage(null);
     setLastCropPoints(null);
-    setAutoDetectedPoints(null);
-    setAutoDetected(false);
     setCalibrationStep("idle");
     resetCalibration();
 
@@ -172,18 +167,7 @@ function DashboardContent() {
       const imgUrl = ev.target?.result as string | undefined;
       if (!imgUrl) return;
       setOriginalImage(imgUrl);
-
-      // Attempt automatic corner detection in parallel with image loading.
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      fetch(DETECT_CORNERS_URL, { method: "POST", body: formData })
-        .then(r => r.json())
-        .then(data => {
-          setAutoDetectedPoints(data.points);
-          setAutoDetected(data.detected === true);
-        })
-        .catch(() => { /* fall through to default Cropper corners */ })
-        .finally(() => setIsCropping(true));
+      setIsCropping(true);
     };
     reader.readAsDataURL(selectedFile);
     e.target.value = "";
@@ -193,7 +177,9 @@ function DashboardContent() {
     setIsCropping(false);
     setLastCropPoints(points);
     if (file) {
-      analyzeImage(file, points);
+      // Pass enterCalibration=true so the user is forced to calibrate
+      // before any annotated result is displayed.
+      analyzeImage(file, points, [], [], true);
       scrollToAnalyzer();
     }
   };
@@ -201,10 +187,15 @@ function DashboardContent() {
   // ── Core analysis call ─────────────────────────────────────────────────────
 
   const analyzeImage = async (
-    selectedFile: File,
-    points:       Point[] | null = null,
-    refN:         Point[]        = [],
-    refFiller:    Point[]        = [],
+    selectedFile:    File,
+    points:          Point[] | null = null,
+    refN:            Point[]        = [],
+    refFiller:       Point[]        = [],
+    // When true (first load after crop), skip showing the YOLO result and
+    // go straight into calibration mode so the user is forced to calibrate
+    // before seeing any output. Coordinates are on the warped image, so we
+    // still need this initial call to obtain raw_cropped_b64.
+    enterCalibration = false,
   ) => {
     setLoading(true);
     const formData = new FormData();
@@ -237,7 +228,18 @@ function DashboardContent() {
 
       setProcessedImage(procImg);
       if (rawCrop) setCroppedRawImage(rawCrop);
-      setCurrentDisplayImage(procImg);
+
+      if (enterCalibration && rawCrop) {
+        // Force calibration: show the raw warped image and open the calibration
+        // bar. The YOLO result from this call is stored but intentionally hidden
+        // until the user completes calibration and triggers a proper analysis.
+        setCurrentDisplayImage(rawCrop);
+        resetCalibration();
+        setCalibrationStep("calibrating");
+      } else {
+        setCurrentDisplayImage(procImg);
+      }
+
       setMassScores(data.areas);
       setBackendStatus("ready");
     } catch (err) {
@@ -286,8 +288,6 @@ function DashboardContent() {
           imageSrc={originalImage}
           onConfirm={handleCropConfirm}
           onCancel={() => { setIsCropping(false); setFile(null); }}
-          initialPoints={autoDetectedPoints ?? undefined}
-          autoDetected={autoDetected}
         />
       )}
 
