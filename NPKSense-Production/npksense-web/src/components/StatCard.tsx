@@ -31,15 +31,15 @@ export default function StatCard({ label, subLabel, value, total, target, color,
         </div>
       </div>
 
-      {/* MAIN VALUE: actual calculated weight in grams */}
+      {/* MAIN VALUE: ratio % */}
       <div className="flex items-baseline gap-1 mb-3">
-        <span className="text-4xl font-black text-slate-800">{value.toFixed(1)}</span>
-        <span className="text-lg font-bold text-slate-400">g</span>
+        <span className="text-4xl font-black text-slate-800">{percent.toFixed(1)}</span>
+        <span className="text-lg font-bold text-slate-400">%</span>
       </div>
 
       <div className="space-y-1.5">
         <div className="flex justify-between text-[10px] font-bold">
-          <span className="text-slate-500">Ratio: {percent.toFixed(1)}%</span>
+          <span className="text-slate-500">Weight: {value.toFixed(1)}g</span>
           <span className="text-slate-400">Target: {target}%</span>
         </div>
 
