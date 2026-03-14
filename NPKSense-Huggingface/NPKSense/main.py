@@ -131,17 +131,14 @@ def four_point_transform(image, pts):
     rect = np.array(pts, dtype="float32")
     (tl, tr, br, bl) = rect
 
-    # คำนวณความกว้างใหม่ของภาพหลังจากดัดให้ตรง
     widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
     widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
     maxWidth = max(int(widthA), int(widthB))
 
-    # คำนวณความสูงใหม่ของภาพ
     heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
     heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
     maxHeight = max(int(heightA), int(heightB))
 
-    # พิกัดปลายทางที่ต้องการให้มุมทั้ง 4 ไปตกลงบนจอ
     dst = np.array([
         [0, 0],
         [maxWidth - 1, 0],
@@ -152,11 +149,46 @@ def four_point_transform(image, pts):
     warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
     return warped
 
+
+def find_clicked_pellet_lab(clicked_norm, class1_data, img_shape):
+    """คืน LAB color เฉลี่ยของเม็ดปุ๋ยที่ครอบคลุมจุดคลิกจุดเดียว (normalized coords 0.0–1.0)
+    ถ้าคลิกนอก contour ทั้งหมด จะ fallback หา centroid ที่ใกล้ที่สุดแทน"""
+    h, w = img_shape[:2]
+    cx = int(clicked_norm['x'] * w)
+    cy = int(clicked_norm['y'] * h)
+
+    for d in class1_data:
+        cnt_f = d['cnt'].astype(np.float32)
+        if cv2.pointPolygonTest(cnt_f, (float(cx), float(cy)), False) >= 0:
+            return d['lab']
+
+    min_dist = float('inf')
+    closest_lab = None
+    for d in class1_data:
+        M = cv2.moments(d['cnt'])
+        if M['m00'] > 0:
+            mcx = M['m10'] / M['m00']
+            mcy = M['m01'] / M['m00']
+            dist = math.sqrt((cx - mcx) ** 2 + (cy - mcy) ** 2)
+            if dist < min_dist:
+                min_dist = dist
+                closest_lab = d['lab']
+    return closest_lab
+
+
+def find_clicked_pellets_lab(clicked_norms, class1_data, img_shape):
+    """รับ list ของจุดคลิก (normalized coords) และคืน list ของ LAB colors
+    ที่ตรงกับเม็ดปุ๋ยแต่ละจุด (None entries ถูกกรองออก)"""
+    return [lab for p in clicked_norms
+            if (lab := find_clicked_pellet_lab(p, class1_data, img_shape)) is not None]
+
+
 @app.post("/analyze_interactive")
 async def analyze_interactive(
-    file: UploadFile = File(...), 
-    threshold: int = Form(35),     # ค่า Saturation สำหรับแยก N (เม็ดขาว) กับ Filler (หินขุ่น)
-    points: str = Form(None)       # จุด 4 จุดจากการครอบตัดภาพของ User (จากหน้าเว็บ)
+    file: UploadFile = File(...),
+    points: str = Form(None),            # พิกัด 4 มุมสำหรับ Perspective Transform
+    ref_n_points: str = Form(None),      # รายการจุด Reference สำหรับ N — JSON array of {x,y}
+    ref_filler_points: str = Form(None), # รายการจุด Reference สำหรับ Filler — JSON array of {x,y}
 ):
     try:
         contents = await file.read()
@@ -179,7 +211,8 @@ async def analyze_interactive(
         # รัน YOLO Inference ตรวจหาเม็ดปุ๋ย
         results = model.predict(img, verbose=False, max_det=3000, conf=0.15, iou=0.6, imgsz=1024)
         
-        hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        # ✅ [ZERO-TOUCH] แปลงภาพเป็น LAB Color Space สำหรับ K-Means Clustering
+        lab_img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
         
         # สำหรับเก็บน้ำหนักของธาตุอาหารหลัก 3 ตัว + ฟิลเลอร์ 
         # (นี่คือน้ำหนักของ "สารอาหาร" ไม่ใช่ "เม็ดแม่ปุ๋ย")
@@ -188,92 +221,147 @@ async def analyze_interactive(
         dark_bg = cv2.addWeighted(img, 0.4, np.zeros_like(img), 0.6, 0)
         thick_lines = np.zeros_like(img)
         thin_lines = np.zeros_like(img)
-        saturation_samples = []
+
+        method = "l_threshold_auto"
 
         if results[0].masks is not None:
             masks_xy = results[0].masks.xy
             classes_ids = results[0].boxes.cls.cpu().numpy()
             
+            # ==================================================================
+            # ✅ [PASS 1] Feature Extraction — สกัดค่าสี LAB เฉลี่ยจากเม็ด Class 1
+            # ==================================================================
+            class1_data = []  # เก็บ { 'index': i, 'cnt': contour, 'area': area_2d, 'lab': [L,A,B] }
+            other_contours = []  # เก็บ contour ที่ไม่ใช่ Class 1 (K, P) เพื่อวาดทีหลัง
+
             for i, polygon in enumerate(masks_xy):
                 if len(polygon) < 3: continue
-                
                 cls_id = int(classes_ids[i])
-                base_name = CLASS_ID_MAP.get(cls_id, 'Unknown')
                 cnt = np.array(polygon, dtype=np.int32)
                 area_2d = cv2.contourArea(cnt)
-                
-                final_name = base_name
-                color = (255, 255, 255)
 
-                # Logic แยก Filler/N ด้วย Saturation
-                if cls_id == 1: # Class N
+                if cls_id == 1:
+                    # สร้าง Inner Mask (Erode ขอบออก เพื่อหลีกเลี่ยง Edge Pixel ที่เบลอ)
                     mask = np.zeros(img.shape[:2], dtype=np.uint8)
                     cv2.drawContours(mask, [cnt], -1, 255, -1)
                     kernel = np.ones((3,3), np.uint8)
                     mask_inner = cv2.erode(mask, kernel, iterations=1)
                     if cv2.countNonZero(mask_inner) == 0: mask_inner = mask
                     
-                    mean_val = cv2.mean(hsv_img, mask=mask_inner)
-                    sat_val = int(mean_val[1])
-                    saturation_samples.append(sat_val)
-                    
-                    if sat_val > threshold:
-                        final_name = 'Filler'; color = (0, 255, 255) # Cyan สำหรับ Filler
-                    else:
-                        final_name = 'N'; color = (200, 200, 200) # Gray/White สำหรับ N
-                elif cls_id == 0: color = (50, 50, 255) # Red (K)
-                elif cls_id == 2: color = (50, 255, 50) # Green (P)
+                    # คำนวณค่าสี LAB เฉลี่ยภายในเม็ด
+                    mean_lab = cv2.mean(lab_img, mask=mask_inner)
+                    class1_data.append({
+                        'index': i, 'cnt': cnt, 'area': area_2d,
+                        'lab': [mean_lab[0], mean_lab[1], mean_lab[2]]
+                    })
+                else:
+                    other_contours.append({
+                        'index': i, 'cls_id': cls_id, 'cnt': cnt, 'area': area_2d
+                    })
 
-                # --- [UPDATED BLOCK START] ---
-                # 1. คำนวณน้ำหนักทางกายภาพ (Physical Mass) ว่าก้อนนี้หนักกี่แกรม
+            # ==================================================================
+            # ✅ [PASS 2] Classification — N vs Filler
+            #
+            # โหมด A (Multi-point Calibration): มี ref_n_points + ref_filler_points
+            #   → สกัด LAB จากทุกจุดที่ User คลิก
+            #   → ใช้ Nearest-Neighbor (min dist to ANY reference) ใน LAB color space
+            #
+            # โหมด B (Auto Fallback): ไม่มี reference points
+            #   → ใช้ L-channel threshold (L > 140 = N, else Filler)
+            # ==================================================================
+            class1_labels = {}
+
+            ref_n_list = json.loads(ref_n_points)      if ref_n_points      else []
+            ref_f_list = json.loads(ref_filler_points) if ref_filler_points else []
+
+            if ref_n_list and ref_f_list and len(class1_data) >= 1:
+                labs_n = find_clicked_pellets_lab(ref_n_list, class1_data, img.shape)
+                labs_f = find_clicked_pellets_lab(ref_f_list, class1_data, img.shape)
+
+                if labs_n and labs_f:
+                    arrs_n = [np.array(l, dtype=np.float32) for l in labs_n]
+                    arrs_f = [np.array(l, dtype=np.float32) for l in labs_f]
+                    for d in class1_data:
+                        lab = np.array(d['lab'], dtype=np.float32)
+                        min_dist_n = min(float(np.linalg.norm(lab - a)) for a in arrs_n)
+                        min_dist_f = min(float(np.linalg.norm(lab - a)) for a in arrs_f)
+                        class1_labels[d['index']] = 'N' if min_dist_n <= min_dist_f else 'Filler'
+                    method = f"multipoint_calibration(n={len(labs_n)},f={len(labs_f)})"
+                else:
+                    for d in class1_data:
+                        class1_labels[d['index']] = 'N' if d['lab'][0] > 140 else 'Filler'
+                    method = "l_threshold_fallback"
+            else:
+                for d in class1_data:
+                    class1_labels[d['index']] = 'N' if d['lab'][0] > 140 else 'Filler'
+                if len(class1_data) == 1:
+                    class1_labels[class1_data[0]['index']] = 'N'
+                method = "l_threshold_auto"
+
+            # ==================================================================
+            # ✅ [PASS 3] คำนวณ Mass + วาด Visual Feedback
+            # ==================================================================
+            # --- Process Class 1 contours (N/Filler) ---
+            for d in class1_data:
+                final_name = class1_labels.get(d['index'], 'N')
+                cnt = d['cnt']
+                area_2d = d['area']
+
+                if final_name == 'Filler':
+                    color = (0, 255, 255)  # Cyan สำหรับ Filler
+                else:
+                    color = (200, 200, 200)  # Gray/White สำหรับ N
+
+                # คำนวณน้ำหนักกายภาพ (Physical Mass)
                 props = MATERIAL_PROPS.get(final_name, {'density':1, 'shape_factor':1})
                 estimated_vol = pow(area_2d, 1.5)
                 relative_mass = estimated_vol * props['shape_factor'] * props['density']
                 
-                # 2. ดึงค่าสัมประสิทธิ์ธาตุอาหาร (Nutrient Factor) ตามชนิดของเม็ด
                 factors = NUTRIENT_FACTORS.get(final_name, {'N': 0, 'P': 0, 'K': 0})
-                
-                # 3. กระจายน้ำหนักกายภาพเข้าสู่ธาตุอาหารจริง (Weighted Calculation)
-                # ตัวอย่าง: เม็ด DAP (แม่ปุ๋ย P) หนัก 100g 
-                # -> จะแตกเป็นธาตุ N 18g และ P 46g (สูตร 18-46-0) ตาม Factor ด้านบน
                 mass_scores['N'] += relative_mass * factors['N']
                 mass_scores['P'] += relative_mass * factors['P']
                 mass_scores['K'] += relative_mass * factors['K']
-                
-                # 4. ส่วนเนื้อสารที่เหลือที่ไม่ใช่ธาตุอาหารหลัก ให้นับรวมเป็น Filler ทั้งหมด
-                # ตัวอย่าง DAP 100g หัก N 18g และ P 46g ออก จะเหลือเนื้อกาก (Filler) 36g
                 total_nutrient_content = factors['N'] + factors['P'] + factors['K']
                 mass_scores['Filler'] += relative_mass * (1.0 - total_nutrient_content)
-                # --- [UPDATED BLOCK END] ---
 
                 # วาด Feedback ลงรูปภาพ
                 cv2.drawContours(thick_lines, [cnt], -1, color, 3)
                 contrast_color = (0,0,0) if final_name == 'N' else (255,255,255)
                 cv2.drawContours(thin_lines, [cnt], -1, contrast_color, 1)
 
+            # --- Process other contours (K, P) ---
+            for d in other_contours:
+                cls_id = d['cls_id']
+                cnt = d['cnt']
+                area_2d = d['area']
+                base_name = CLASS_ID_MAP.get(cls_id, 'Unknown')
+
+                if cls_id == 0: color = (50, 50, 255)   # Red (K)
+                elif cls_id == 2: color = (50, 255, 50)  # Green (P)
+                else: color = (255, 255, 255)
+
+                props = MATERIAL_PROPS.get(base_name, {'density':1, 'shape_factor':1})
+                estimated_vol = pow(area_2d, 1.5)
+                relative_mass = estimated_vol * props['shape_factor'] * props['density']
+                
+                factors = NUTRIENT_FACTORS.get(base_name, {'N': 0, 'P': 0, 'K': 0})
+                mass_scores['N'] += relative_mass * factors['N']
+                mass_scores['P'] += relative_mass * factors['P']
+                mass_scores['K'] += relative_mass * factors['K']
+                total_nutrient_content = factors['N'] + factors['P'] + factors['K']
+                mass_scores['Filler'] += relative_mass * (1.0 - total_nutrient_content)
+
+                cv2.drawContours(thick_lines, [cnt], -1, color, 3)
+                cv2.drawContours(thin_lines, [cnt], -1, (255,255,255), 1)
+
         final_vis = cv2.add(dark_bg, thick_lines)
         mask_thin = cv2.cvtColor(thin_lines, cv2.COLOR_BGR2GRAY) > 0
         final_vis[mask_thin] = thin_lines[mask_thin]
 
-        hist_data = [0]*256
-        auto_thresh = 35
-        if saturation_samples:
-            for s in saturation_samples: hist_data[s]+=1
-            samples_np = np.array(saturation_samples, dtype=np.uint8)
-            ret, _ = cv2.threshold(samples_np, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-            auto_thresh = int(ret)
-            
-            THRESH_FLOOR = 40
-            auto_thresh = max(auto_thresh, THRESH_FLOOR)
-
         response = {
             "image_b64": bgr_to_base64(final_vis),
-            # ส่งค่า Mass Score สุดท้ายของแต่ละ "ธาตุ" กลับไปแสดงบน Frontend
-            "areas": mass_scores, 
-            "histogram": hist_data,
-            "auto_threshold": auto_thresh,
-            "used_threshold": auto_thresh,
-            "threshold_source": "auto",
+            "areas": mass_scores,
+            "method": method,
         }
         # ส่งภาพ raw crop กลับเพื่อให้ frontend ใช้ฟีเจอร์ Hold-to-compare
         if raw_cropped is not None:
