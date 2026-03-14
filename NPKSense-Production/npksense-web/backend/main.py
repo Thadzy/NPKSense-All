@@ -154,12 +154,14 @@ async def analyze_interactive(
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         # ✅ ดัดภาพมุมมอง (Warp Perspective) ก่อนส่งให้ YOLO
+        raw_cropped = None
         if points:
             try:
                 pts_norm = json.loads(points)
                 h, w = img.shape[:2]
                 pts_pixel = [[p['x'] * w, p['y'] * h] for p in pts_norm]
                 img = four_point_transform(img, pts_pixel)
+                raw_cropped = img.copy()  # เก็บภาพที่ดัดแล้วก่อน YOLO
             except Exception as e:
                 print(f"Warp Error: {e}")
 
@@ -259,14 +261,18 @@ async def analyze_interactive(
             # Take the highest value of the three to ensure better sample separation
             auto_thresh = max(otsu_thresh, p60_thresh, THRESH_FLOOR)
 
-        return JSONResponse({
+        response = {
             "image_b64": bgr_to_base64(final_vis),
-            "areas": mass_scores,   # โยน Dictionary ส่วนผสมกลับไปให้ตีเป็น % ใน Frontend
-            "histogram": hist_data, # สำหรับพล็อตกราฟให้ User เลือกขอบเขต
+            "areas": mass_scores,
+            "histogram": hist_data,
             "auto_threshold": auto_thresh,
             "used_threshold": auto_thresh,
-            "threshold_source": "auto"
-        })
+            "threshold_source": "auto",
+        }
+        if raw_cropped is not None:
+            response["raw_cropped_b64"] = bgr_to_base64(raw_cropped)
+
+        return JSONResponse(response)
 
     except Exception as e:
         print(f"Error: {e}")
