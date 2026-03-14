@@ -28,9 +28,9 @@ export default function StatCard({ label, subLabel, value, total, target, color,
           <h4 className={`text-xs font-black uppercase tracking-wider ${color}`}>{label}</h4>
           <span className="text-[10px] text-slate-400 font-semibold">{subLabel}</span>
         </div>
-        {/* ป้าย Error Tag */}
-        <div className={`text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 ${isGood ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-          {error > 0 ? '+' : ''}{error.toFixed(1)}%
+        {/* Error/Variance Badge */}
+        <div className={`text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 ${isGood ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`} title="Difference from target">
+          {error > 0 ? '↑' : error < 0 ? '↓' : '='} {Math.abs(error).toFixed(1)}%
         </div>
       </div>
 

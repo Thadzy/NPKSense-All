@@ -8,14 +8,16 @@ interface ImagePreviewProps {
   currentDisplayImage: string | null;
   onToggleStart: () => void;
   onToggleEnd: () => void;
+  showCompare?: boolean;
 }
 
-export default function ImagePreview({ 
-  loading, 
-  processedImage, 
-  currentDisplayImage, 
-  onToggleStart, 
-  onToggleEnd 
+export default function ImagePreview({
+  loading,
+  processedImage,
+  currentDisplayImage,
+  onToggleStart,
+  onToggleEnd,
+  showCompare = true
 }: ImagePreviewProps) {
   return (
     <div className="relative flex-1 bg-slate-900 rounded-3xl overflow-hidden shadow-2xl shadow-slate-300 min-h-[500px] group border-4 border-white">
@@ -29,16 +31,24 @@ export default function ImagePreview({
       )}
 
       {processedImage && (
-        <button
-          onMouseDown={onToggleStart}
-          onMouseUp={onToggleEnd}
-          onMouseLeave={onToggleEnd}
-          onTouchStart={onToggleStart}
-          onTouchEnd={onToggleEnd}
-          className="absolute top-6 right-6 z-20 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white pl-3 pr-4 py-2 rounded-full text-xs font-bold border border-white/10 transition-all flex items-center gap-2 select-none active:scale-95 shadow-lg"
-        >
-          <Eye size={14} className="text-blue-400" /> Hold to compare
-        </button>
+        <>
+          {showCompare && (
+            <button
+              onMouseDown={onToggleStart}
+              onMouseUp={onToggleEnd}
+              onMouseLeave={onToggleEnd}
+              onTouchStart={onToggleStart}
+              onTouchEnd={onToggleEnd}
+              className="absolute top-6 right-6 z-20 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white pl-3 pr-4 py-2 rounded-full text-xs font-bold border border-white/10 transition-all flex items-center gap-2 select-none active:scale-95 shadow-lg"
+            >
+              <Eye size={14} className="text-blue-400" /> Hold to compare
+            </button>
+          )}
+          <div className="absolute top-6 left-6 z-20 bg-green-500/90 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 shadow-lg">
+            <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+            Analysis Complete
+          </div>
+        </>
       )}
 
       <div className="w-full h-full flex items-center justify-center p-4">
