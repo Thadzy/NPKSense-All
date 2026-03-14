@@ -1,32 +1,25 @@
 "use client";
 import React from "react";
-import { Settings2, Eye, Wand2, Scale, FlaskConical } from "lucide-react";
-import { Bar, Doughnut } from "react-chartjs-2";
+import { Settings2, Scale, FlaskConical, Sparkles } from "lucide-react";
+import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 interface ControlPanelProps {
   file: File | null;
-  threshold: number;
   totalWeight: number;
   targets: { N: number, P: number, K: number, Filler: number };
-  histChartData: any;
   pieChartData: any;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onSliderChange: (val: number) => void;
-  onAutoClick: () => void;
   onWeightChange: (val: number) => void;
   onTargetChange: (key: string, val: number) => void;
-  thresholdSource?: 'auto' | 'manual';
-  usedThreshold?: number;
 }
 
 export default function ControlPanel({
-  file, threshold, totalWeight, targets,
-  histChartData, pieChartData,
-  onFileUpload, onSliderChange, onAutoClick, onWeightChange, onTargetChange,
-  thresholdSource = 'manual', usedThreshold = 35
+  file, totalWeight, targets,
+  pieChartData,
+  onFileUpload, onWeightChange, onTargetChange,
 }: ControlPanelProps) {
   
   const legendItems = [
@@ -42,10 +35,16 @@ export default function ControlPanel({
       {/* Background Decor */}
       <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-bl-full -z-10 opacity-50"></div>
       
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">
           <span className="text-blue-600">NPK</span> Sense
         </h1>
+        <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100">
+          <Sparkles size={12} className="text-purple-500" />
+          <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wide">
+            Zero-Touch AI Clustering
+          </span>
+        </div>
       </div>
 
       {/* 1. UPLOAD */}
@@ -69,63 +68,10 @@ export default function ControlPanel({
         </div>
       </div>
 
-      {/* 2. SENSITIVITY */}
-      <div className="mb-6 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <Eye size={14} /> 2. Sensitivity
-            </label>
-            {thresholdSource === 'auto' && (
-              <span className="text-[8px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 uppercase tracking-wide">
-                ✓ Auto Selected
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onAutoClick} disabled={!file}
-            className="flex items-center gap-1.5 text-[10px] font-bold bg-white border border-slate-200 text-purple-600 px-2 py-1 rounded-lg shadow-sm hover:border-purple-200 hover:bg-purple-50 transition-all disabled:opacity-50"
-          >
-            <Wand2 size={10} /> Auto
-          </button>
-        </div>
-        
-        {/* Histogram visualization */}
-        <div className="h-12 w-full mb-3 opacity-80">
-          <Bar data={histChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false as any }} />
-        </div>
-
-        {/* Threshold slider */}
-        <input
-          type="range" min="0" max="255" value={threshold}
-          onChange={(e) => onSliderChange(parseInt(e.target.value))}
-          disabled={!file}
-          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-          title="Adjust to control N vs Filler separation"
-        />
-
-        {/* Threshold labels and value display */}
-        <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-400 mt-3">
-          <span className="text-[9px]">Pure N</span>
-          <div className="flex flex-col items-center gap-0.5">
-            <span className="text-blue-600 text-sm font-black">{threshold}</span>
-            {usedThreshold !== undefined && usedThreshold !== threshold && (
-              <span className="text-[8px] text-purple-500 font-bold">Used: {usedThreshold}</span>
-            )}
-          </div>
-          <span className="text-[9px]">Pure Filler</span>
-        </div>
-
-        {/* Helper text */}
-        <div className="mt-2 text-[8px] text-slate-400 leading-tight">
-          <p className="text-center italic">Lower values → more N, Higher values → more Filler</p>
-        </div>
-      </div>
-
-      {/* 3. WEIGHT */}
+      {/* 2. WEIGHT */}
       <div className="mb-6">
         <label className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-          <Scale size={14} /> 3. Total Weight (g)
+          <Scale size={14} /> 2. Total Weight (g)
         </label>
         <div className="relative">
           <input
@@ -141,10 +87,10 @@ export default function ControlPanel({
         <p className="text-[8px] text-slate-400 mt-2 italic">Enter sample weight to calculate actual composition</p>
       </div>
         
-      {/* 4. TARGET RECIPE */}
+      {/* 3. TARGET RECIPE */}
       <div className="mb-8">
           <label className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-            <FlaskConical size={14} /> 4. Target Recipe (%)
+            <FlaskConical size={14} /> 3. Target Recipe (%)
           </label>
           <p className="text-[8px] text-slate-400 mb-3 italic">Set target composition percentages (should total ~100%)</p>
           <div className="grid grid-cols-4 gap-3">
@@ -159,7 +105,6 @@ export default function ControlPanel({
                     {key === 'Filler' ? 'FILL' : key}
                   </span>
                   
-                  {/* ✅ ปลดล็อค: ทุกช่องพิมพ์ได้หมด */}
                   <input 
                     type="number"
                     value={val === 0 ? '' : val} 
