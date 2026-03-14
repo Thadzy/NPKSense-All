@@ -12,23 +12,20 @@ interface StatCardProps {
 }
 
 export default function StatCard({ label, subLabel, value, total, target, color, barColor }: StatCardProps) {
-  // คำนวณ % (นี่คือค่าที่เราจะเอามาโชว์เป็นตัวหลัก)
   const percent = total > 0 ? (value / total * 100) : 0;
-  
-  // คำนวณ Error เทียบกับ Target
   const error = percent - target;
   const isGood = Math.abs(error) <= 2.0;
 
   return (
     <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow relative overflow-hidden group">
       <div className={`absolute top-0 left-0 w-1 h-full ${barColor}`}></div>
-      
+
       <div className="flex justify-between items-start mb-3">
         <div>
           <h4 className={`text-xs font-black uppercase tracking-wider ${color}`}>{label}</h4>
           <span className="text-[10px] text-slate-400 font-semibold">{subLabel}</span>
         </div>
-        {/* Error/Variance Badge */}
+        {/* Error badge: difference between measured % and target % */}
         <div className={`text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 ${isGood ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`} title="Difference from target">
           {error > 0 ? '↑' : error < 0 ? '↓' : '='} {Math.abs(error).toFixed(1)}%
         </div>
@@ -45,11 +42,11 @@ export default function StatCard({ label, subLabel, value, total, target, color,
           <span className="text-slate-500">Ratio: {percent.toFixed(1)}%</span>
           <span className="text-slate-400">Target: {target}%</span>
         </div>
-        
+
         {/* Progress Bar */}
         <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-          <div 
-            className={`h-full rounded-full ${barColor} transition-all duration-500 ease-out`} 
+          <div
+            className={`h-full rounded-full ${barColor} transition-all duration-500 ease-out`}
             style={{ width: `${Math.min(percent, 100)}%` }}
           ></div>
         </div>

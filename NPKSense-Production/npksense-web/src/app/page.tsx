@@ -355,6 +355,7 @@ function DashboardContent() {
                 loading={loading}
                 processedImage={processedImage}
                 currentDisplayImage={currentDisplayImage}
+                showCompare={croppedRawImage !== null}
                 onToggleStart={() => {
                   if (croppedRawImage) setCurrentDisplayImage(croppedRawImage);
                 }}
