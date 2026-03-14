@@ -90,25 +90,35 @@ export default function ControlPanel({
           </button>
         </div>
         
-        <div className="h-12 w-full mb-2 opacity-80">
+        {/* Histogram visualization */}
+        <div className="h-12 w-full mb-3 opacity-80">
           <Bar data={histChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false as any }} />
         </div>
 
+        {/* Threshold slider */}
         <input
           type="range" min="0" max="255" value={threshold}
           onChange={(e) => onSliderChange(parseInt(e.target.value))}
           disabled={!file}
           className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+          title="Adjust to control N vs Filler separation"
         />
-        <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-400 mt-2">
-          <span>N (Strict)</span>
+
+        {/* Threshold labels and value display */}
+        <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-400 mt-3">
+          <span className="text-[9px]">Pure N</span>
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-blue-600 text-xs font-black">{threshold}</span>
+            <span className="text-blue-600 text-sm font-black">{threshold}</span>
             {usedThreshold !== undefined && usedThreshold !== threshold && (
-              <span className="text-[8px] text-purple-500 font-bold">Uses: {usedThreshold}</span>
+              <span className="text-[8px] text-purple-500 font-bold">Used: {usedThreshold}</span>
             )}
           </div>
-          <span>Filler (Relaxed)</span>
+          <span className="text-[9px]">Pure Filler</span>
+        </div>
+
+        {/* Helper text */}
+        <div className="mt-2 text-[8px] text-slate-400 leading-tight">
+          <p className="text-center italic">Lower values → more N, Higher values → more Filler</p>
         </div>
       </div>
 
@@ -118,23 +128,25 @@ export default function ControlPanel({
           <Scale size={14} /> 3. Total Weight (g)
         </label>
         <div className="relative">
-          <input 
-            type="number" 
-            value={totalWeight === 0 ? '' : totalWeight} 
+          <input
+            type="number"
+            value={totalWeight === 0 ? '' : totalWeight}
             onFocus={(e) => e.target.select()}
             onChange={(e) => onWeightChange(parseFloat(e.target.value) || 0)}
-            placeholder="0"
+            placeholder="100"
             className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-lg font-bold text-slate-800 placeholder-slate-300 transition-all shadow-sm
             [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
         </div>
+        <p className="text-[8px] text-slate-400 mt-2 italic">Enter sample weight to calculate actual composition</p>
       </div>
         
       {/* 4. TARGET RECIPE */}
       <div className="mb-8">
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
             <FlaskConical size={14} /> 4. Target Recipe (%)
           </label>
+          <p className="text-[8px] text-slate-400 mb-3 italic">Set target composition percentages (should total ~100%)</p>
           <div className="grid grid-cols-4 gap-3">
             {['N', 'P', 'K', 'Filler'].map((key) => {
               const val = targets[key as keyof typeof targets];
