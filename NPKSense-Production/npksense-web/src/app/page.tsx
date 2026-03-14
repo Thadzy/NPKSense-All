@@ -357,7 +357,6 @@ function DashboardContent() {
                 currentDisplayImage={currentDisplayImage}
                 onToggleStart={() => {
                   if (croppedRawImage) setCurrentDisplayImage(croppedRawImage);
-                  else if (originalImage) setCurrentDisplayImage(originalImage);
                 }}
                 onToggleEnd={() => { if (processedImage) setCurrentDisplayImage(processedImage); }}
               />

@@ -21,6 +21,7 @@ export default function PerspectiveCropper({ imageSrc, onConfirm, onCancel, init
     { x: 0.2, y: 0.8 }, // Bottom-Left
   ]);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [imgAspect, setImgAspect] = useState<number | null>(null);
 
   const handlePointerDown = (index: number, e: React.PointerEvent) => {
     e.preventDefault();
@@ -55,15 +56,24 @@ export default function PerspectiveCropper({ imageSrc, onConfirm, onCancel, init
         )}
       </div>
 
-      <div 
+      <div
         ref={containerRef}
-        className="relative max-w-4xl max-h-[70vh] w-full aspect-auto select-none touch-none"
+        className="relative max-w-4xl max-h-[70vh] w-full select-none touch-none"
+        style={imgAspect ? { aspectRatio: imgAspect } : undefined}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
         {/* รูปภาพ */}
-        <img src={imageSrc} alt="Crop" className="w-full h-full object-contain pointer-events-none rounded-lg" />
+        <img
+          src={imageSrc}
+          alt="Crop"
+          className="w-full h-full object-fill pointer-events-none rounded-lg"
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            setImgAspect(img.naturalWidth / img.naturalHeight);
+          }}
+        />
 
         {/* ✅ SVG Overlay สำหรับเส้นเชื่อมจุด */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
