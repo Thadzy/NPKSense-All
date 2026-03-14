@@ -47,6 +47,8 @@ function DashboardContent() {
   const [massScores, setMassScores] = useState({ N: 0, P: 0, K: 0, Filler: 0 });
   const [histData, setHistData] = useState<number[]>(Array(256).fill(0));
   const [autoThreshold, setAutoThreshold] = useState(35);
+  const [thresholdSource, setThresholdSource] = useState<'auto' | 'manual'>('manual');
+  const [usedThreshold, setUsedThreshold] = useState(35);
 
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -201,6 +203,10 @@ function DashboardContent() {
       setMassScores(data.areas);
       setBackendStatus('ready');
 
+      // Always update threshold source and used threshold from backend
+      if (data.threshold_source) setThresholdSource(data.threshold_source);
+      if (data.used_threshold !== undefined) setUsedThreshold(data.used_threshold);
+
       if (isFirstLoad && data.histogram) {
         setHistData(data.histogram);
         setAutoThreshold(data.auto_threshold);
@@ -216,6 +222,7 @@ function DashboardContent() {
 
   const handleSliderChange = (val: number) => {
     setThreshold(val);
+    setThresholdSource('manual'); // Mark as manually adjusted
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       if (file) analyzeImage(file, val, false, lastCropPoints);
@@ -336,9 +343,11 @@ function DashboardContent() {
                 pieChartData={pieChartData}
                 onFileUpload={handleFileUpload}
                 onSliderChange={handleSliderChange}
-                onAutoClick={() => { setThreshold(autoThreshold); if (file) analyzeImage(file, autoThreshold, false); }}
+                onAutoClick={() => { setThreshold(autoThreshold); setThresholdSource('auto'); if (file) analyzeImage(file, autoThreshold, false); }}
                 onWeightChange={setTotalWeight}
                 onTargetChange={handleTargetChange}
+                thresholdSource={thresholdSource}
+                usedThreshold={usedThreshold}
               />
             </div>
             <div className="lg:col-span-8 space-y-6 flex flex-col h-full">

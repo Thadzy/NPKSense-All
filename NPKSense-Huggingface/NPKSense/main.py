@@ -255,30 +255,21 @@ async def analyze_interactive(
 
         hist_data = [0]*256
         auto_thresh = 35
-        THRESH_FLOOR = 40
-
         if saturation_samples:
             for s in saturation_samples: hist_data[s]+=1
             samples_np = np.array(saturation_samples, dtype=np.uint8)
-
-            # Otsu thresholding
             ret, _ = cv2.threshold(samples_np, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-            otsu_thresh = int(ret)
-
-            # Fallback: use 60th percentile for cases where all samples are same color (e.g., Urea)
-            p60_thresh = int(np.percentile(samples_np, 60))
-
-            # Take the highest value of the three to ensure better sample separation
-            auto_thresh = max(otsu_thresh, p60_thresh, THRESH_FLOOR)
+            auto_thresh = int(ret)
+            
+            THRESH_FLOOR = 40
+            auto_thresh = max(auto_thresh, THRESH_FLOOR)
 
         return JSONResponse({
             "image_b64": bgr_to_base64(final_vis),
             # ส่งค่า Mass Score สุดท้ายของแต่ละ "ธาตุ" กลับไปแสดงบน Frontend
-            "areas": mass_scores,
+            "areas": mass_scores, 
             "histogram": hist_data,
-            "auto_threshold": auto_thresh,
-            "used_threshold": auto_thresh,
-            "threshold_source": "auto"
+            "auto_threshold": auto_thresh
         })
 
     except Exception as e:

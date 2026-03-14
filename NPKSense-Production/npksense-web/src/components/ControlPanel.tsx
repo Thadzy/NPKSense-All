@@ -18,12 +18,15 @@ interface ControlPanelProps {
   onAutoClick: () => void;
   onWeightChange: (val: number) => void;
   onTargetChange: (key: string, val: number) => void;
+  thresholdSource?: 'auto' | 'manual';
+  usedThreshold?: number;
 }
 
 export default function ControlPanel({
   file, threshold, totalWeight, targets,
   histChartData, pieChartData,
-  onFileUpload, onSliderChange, onAutoClick, onWeightChange, onTargetChange
+  onFileUpload, onSliderChange, onAutoClick, onWeightChange, onTargetChange,
+  thresholdSource = 'manual', usedThreshold = 35
 }: ControlPanelProps) {
   
   const legendItems = [
@@ -69,10 +72,17 @@ export default function ControlPanel({
       {/* 2. SENSITIVITY */}
       <div className="mb-6 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
         <div className="flex justify-between items-center mb-3">
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <Eye size={14} /> 2. Sensitivity
-          </label>
-          <button 
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <Eye size={14} /> 2. Sensitivity
+            </label>
+            {thresholdSource === 'auto' && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 uppercase tracking-wide">
+                ✓ Auto Selected
+              </span>
+            )}
+          </div>
+          <button
             onClick={onAutoClick} disabled={!file}
             className="flex items-center gap-1.5 text-[10px] font-bold bg-white border border-slate-200 text-purple-600 px-2 py-1 rounded-lg shadow-sm hover:border-purple-200 hover:bg-purple-50 transition-all disabled:opacity-50"
           >
@@ -84,15 +94,20 @@ export default function ControlPanel({
           <Bar data={histChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false as any }} />
         </div>
 
-        <input 
-          type="range" min="0" max="255" value={threshold} 
+        <input
+          type="range" min="0" max="255" value={threshold}
           onChange={(e) => onSliderChange(parseInt(e.target.value))}
           disabled={!file}
           className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
         />
-        <div className="flex justify-between text-[10px] uppercase font-bold text-slate-400 mt-2">
+        <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-400 mt-2">
           <span>N (Strict)</span>
-          <span className="text-blue-600 text-xs">{threshold}</span>
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-blue-600 text-xs font-black">{threshold}</span>
+            {usedThreshold !== undefined && usedThreshold !== threshold && (
+              <span className="text-[8px] text-purple-500 font-bold">Uses: {usedThreshold}</span>
+            )}
+          </div>
           <span>Filler (Relaxed)</span>
         </div>
       </div>
